@@ -6,6 +6,65 @@ import json
 import time
 import os
 
+import sys
+
+from PyQt5.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QApplication,
+)
+from PyQt5.QtGui import QPixmap
+
+
+class MainWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.init_ui()
+
+    def init_ui(self):
+        # Main
+        main_layout = QVBoxLayout()
+        self.text_label = QLabel("Here comes the LLM text")
+        main_layout.addWidget(self.text_label)
+
+        # Image display
+        self.image_label = QLabel("Image will be displayed here")
+        self.image_label.setPixmap(QPixmap())  # Placeholder for an image
+        main_layout.addWidget(self.image_label)
+
+        # Text field
+        self.text_input = QLineEdit("Enter your prompt here")
+        main_layout.addWidget(self.text_input)
+
+        # Prompt button
+        self.prompt_button = QPushButton("Prompt")
+        main_layout.addWidget(self.prompt_button)
+
+        self.setLayout(main_layout)
+
+        # Logic
+        self.prompt_button.clicked.connect(self.prompt)
+
+    def update_text(self, text: str):
+        self.text_label.setText(text)
+
+    def prompt(self):
+        user_input = self.text_input.text()
+        self.llm_prompt(user_input)
+
+    def llm_prompt(self, prompt: str):
+        response, img_path = prompt_llm(prompt)
+        self.update_text(response)
+        self.update_image(img_path)
+
+    def update_image(self, image_path: str):
+        pixmap = QPixmap(image_path)
+        self.image_label.setPixmap(pixmap)
+
 
 webui_server_url = "http://127.0.0.1:7860"
 
@@ -37,6 +96,7 @@ def call_txt2img_api(**payload):
     for index, image in enumerate(response.get("images")):
         save_path = os.path.join(out_dir, f"txt2img-{timestamp()}-{index}.png")
         decode_and_save_base64(image, save_path)
+    return save_path
 
 
 def create_image_from_prompt(prompt: str):
@@ -52,10 +112,10 @@ def create_image_from_prompt(prompt: str):
         "n_iter": 1,
         "batch_size": 1,
     }
-    call_txt2img_api(**payload)
+    return call_txt2img_api(**payload)
 
 
-def prompt_llm(prompt: str, llm_model: str = "llama3"):
+def prompt_llm(prompt: str, llm_model: str = "adv"):
     url = "http://localhost:11434/api/chat"
     data = {"model": llm_model, "messages": [{"role": "user", "content": prompt}]}
 
@@ -77,9 +137,18 @@ def prompt_llm(prompt: str, llm_model: str = "llama3"):
 
     print(combined_message)
 
-    create_image_from_prompt(combined_message)
+    # split message on * to get feedback to player and image description
+    response_text = combined_message.split("*")[0]
+    image_description = combined_message.split("*")[1]
+
+    save_path = create_image_from_prompt(image_description)
+
+    return response_text, save_path
 
 
 if __name__ == "__main__":
-    prompt = input("Enter a prompt: ")
-    prompt_llm(prompt)
+    app = QApplication(sys.argv)
+    m = MainWidget()
+    m.show()
+    m.llm_prompt("Start the game in a random location and a random item.")
+    sys.exit(app.exec_())
